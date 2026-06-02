@@ -1,14 +1,15 @@
 :root {
   color-scheme: light;
-  --ink: #17202a;
-  --muted: #5d6875;
-  --line: #cfd7de;
+  --ink: #232328;
+  --muted: #53535e;
+  --line: #d5d5db;
   --paper: #ffffff;
-  --wash: #f4f7f8;
-  --accent: #146c63;
-  --accent-strong: #0f514b;
+  --wash: #e9e9ea;
+  --accent: #0795df;
+  --accent-strong: #057fc0;
+  --slate: #53535e;
   --danger: #a33a2f;
-  --focus: #d68b2d;
+  --focus: #0795df;
 }
 
 * {
@@ -21,6 +22,13 @@ body {
   font-family: Arial, Helvetica, sans-serif;
   background: var(--wash);
   color: var(--ink);
+}
+
+body::before {
+  content: "";
+  display: block;
+  height: 8px;
+  background: var(--accent);
 }
 
 .shell {
@@ -37,7 +45,7 @@ body {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 24px;
-  box-shadow: 0 12px 30px rgba(23, 32, 42, 0.07);
+  box-shadow: 0 12px 30px rgba(35, 35, 40, 0.09);
 }
 
 .mast {
@@ -104,12 +112,12 @@ select {
 
 input:focus {
   border-color: var(--focus);
-  outline: 3px solid rgba(214, 139, 45, 0.22);
+  outline: 3px solid rgba(7, 149, 223, 0.18);
 }
 
 select:focus {
   border-color: var(--focus);
-  outline: 3px solid rgba(214, 139, 45, 0.22);
+  outline: 3px solid rgba(7, 149, 223, 0.18);
 }
 
 .date-grid {
@@ -164,12 +172,13 @@ button:disabled {
 }
 
 .secondary {
-  color: var(--accent);
-  background: #e5f0ee;
+  color: #fff;
+  background: var(--slate);
 }
 
 .secondary:hover {
   color: #fff;
+  background: #41414a;
 }
 
 .notice {

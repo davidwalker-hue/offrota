@@ -1,4 +1,5 @@
 const requestForm = document.querySelector("#requestForm");
+const formTitle = document.querySelector("#formTitle");
 const formMessage = document.querySelector("#formMessage");
 const closedNotice = document.querySelector("#closedNotice");
 const deadlineText = document.querySelector("#deadlineText");
@@ -7,7 +8,10 @@ const adminControls = document.querySelector("#adminControls");
 const adminMessage = document.querySelector("#adminMessage");
 const responseCount = document.querySelector("#responseCount");
 const deadlineInput = document.querySelector("#deadlineInput");
+const requestMonth = document.querySelector("#requestMonth");
+const requestYear = document.querySelector("#requestYear");
 const saveDeadline = document.querySelector("#saveDeadline");
+const saveTitle = document.querySelector("#saveTitle");
 const downloadWorkbook = document.querySelector("#downloadWorkbook");
 
 let adminPassword = "";
@@ -32,6 +36,8 @@ function setMessage(element, text, type = "") {
 async function loadStatus() {
   const response = await fetch("/api/status");
   const status = await response.json();
+  formTitle.textContent = status.settings.title;
+  document.title = status.settings.title;
   deadlineText.textContent = `Open until ${formatDeadline(status.settings.deadline)} (${status.settings.timezoneLabel}).`;
   closedNotice.classList.toggle("hidden", !status.isClosed);
   [...requestForm.elements].forEach(element => {
@@ -81,6 +87,8 @@ adminForm.addEventListener("submit", async event => {
 
   adminControls.classList.remove("hidden");
   deadlineInput.value = result.settings.deadline;
+  requestMonth.value = String(result.settings.requestMonth);
+  requestYear.value = String(result.settings.requestYear);
   responseCount.textContent = `${result.responseCount} response${result.responseCount === 1 ? "" : "s"} stored.`;
   setMessage(adminMessage, "Admin controls unlocked.", "success");
 });
@@ -103,6 +111,32 @@ saveDeadline.addEventListener("click", async () => {
   }
 
   setMessage(adminMessage, "Deadline updated.", "success");
+  await loadStatus();
+});
+
+saveTitle.addEventListener("click", async () => {
+  setMessage(adminMessage, "Saving title...");
+  const response = await fetch("/api/admin/title", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Admin-Password": adminPassword
+    },
+    body: JSON.stringify({
+      requestMonth: Number(requestMonth.value),
+      requestYear: Number(requestYear.value)
+    })
+  });
+  const result = await response.json();
+
+  if (!response.ok) {
+    setMessage(adminMessage, result.error, "error");
+    return;
+  }
+
+  requestMonth.value = String(result.settings.requestMonth);
+  requestYear.value = String(result.settings.requestYear);
+  setMessage(adminMessage, "Title updated.", "success");
   await loadStatus();
 });
 

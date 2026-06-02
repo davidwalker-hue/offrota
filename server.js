@@ -23,8 +23,29 @@ const HEADERS = [
   "Are these Dates part of a continuous period of annual leave?"
 ];
 
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December"
+];
+
+function buildTitle(month, year) {
+  return `Off Rota Requests for ${MONTHS[month - 1]} ${year}`;
+}
+
 const DEFAULT_SETTINGS = {
-  title: "Off Rota Requests for June 2026",
+  requestMonth: 6,
+  requestYear: 2026,
+  title: buildTitle(6, 2026),
   deadline: "2026-05-08T09:00",
   timezoneLabel: "UK time",
   source: "Replicated from Google Drive response sheet: Off Rota Requests for June 2026 - Open until 9 am 8th May"
@@ -60,6 +81,13 @@ function writeJson(file, value) {
 
 function getSettings() {
   const settings = { ...DEFAULT_SETTINGS, ...readJson(SETTINGS_JSON, {}) };
+  if (!Number.isInteger(settings.requestMonth) || settings.requestMonth < 1 || settings.requestMonth > 12) {
+    settings.requestMonth = DEFAULT_SETTINGS.requestMonth;
+  }
+  if (!Number.isInteger(settings.requestYear) || settings.requestYear < 2000 || settings.requestYear > 2100) {
+    settings.requestYear = DEFAULT_SETTINGS.requestYear;
+  }
+  settings.title = buildTitle(settings.requestMonth, settings.requestYear);
   writeJson(SETTINGS_JSON, settings);
   return settings;
 }
@@ -362,6 +390,27 @@ async function handleApi(req, res) {
       return send(res, 400, { error: "Enter a valid deadline date and time." });
     }
     const next = { ...settings, deadline };
+    writeJson(SETTINGS_JSON, next);
+    return send(res, 200, { settings: next, isClosed: deadlineHasPassed(next) });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/admin/title") {
+    if (!requireAdmin(req)) return send(res, 401, { error: "Incorrect admin password." });
+    const body = await parseBody(req);
+    const requestMonth = Number(body.requestMonth);
+    const requestYear = Number(body.requestYear);
+    if (!Number.isInteger(requestMonth) || requestMonth < 1 || requestMonth > 12) {
+      return send(res, 400, { error: "Choose a valid month." });
+    }
+    if (!Number.isInteger(requestYear) || requestYear < 2000 || requestYear > 2100) {
+      return send(res, 400, { error: "Choose a valid year." });
+    }
+    const next = {
+      ...settings,
+      requestMonth,
+      requestYear,
+      title: buildTitle(requestMonth, requestYear)
+    };
     writeJson(SETTINGS_JSON, next);
     return send(res, 200, { settings: next, isClosed: deadlineHasPassed(next) });
   }

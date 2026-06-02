@@ -1,0 +1,127 @@
+const requestForm = document.querySelector("#requestForm");
+const formMessage = document.querySelector("#formMessage");
+const closedNotice = document.querySelector("#closedNotice");
+const deadlineText = document.querySelector("#deadlineText");
+const adminForm = document.querySelector("#adminForm");
+const adminControls = document.querySelector("#adminControls");
+const adminMessage = document.querySelector("#adminMessage");
+const responseCount = document.querySelector("#responseCount");
+const deadlineInput = document.querySelector("#deadlineInput");
+const saveDeadline = document.querySelector("#saveDeadline");
+const downloadWorkbook = document.querySelector("#downloadWorkbook");
+
+let adminPassword = "";
+
+function formatDeadline(value) {
+  const date = new Date(value);
+  return date.toLocaleString("en-GB", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function setMessage(element, text, type = "") {
+  element.textContent = text;
+  element.className = `message ${type}`.trim();
+}
+
+async function loadStatus() {
+  const response = await fetch("/api/status");
+  const status = await response.json();
+  deadlineText.textContent = `Open until ${formatDeadline(status.settings.deadline)} (${status.settings.timezoneLabel}).`;
+  closedNotice.classList.toggle("hidden", !status.isClosed);
+  [...requestForm.elements].forEach(element => {
+    if (element.tagName !== "BUTTON") element.disabled = status.isClosed;
+  });
+  requestForm.querySelector("button").disabled = status.isClosed;
+}
+
+requestForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  setMessage(formMessage, "Submitting...");
+
+  const formData = new FormData(requestForm);
+  const payload = Object.fromEntries(formData.entries());
+
+  const response = await fetch("/api/submit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const result = await response.json();
+
+  if (!response.ok) {
+    setMessage(formMessage, result.errors ? result.errors.join(" ") : result.error, "error");
+    await loadStatus();
+    return;
+  }
+
+  requestForm.reset();
+  setMessage(formMessage, "Your request has been submitted.", "success");
+});
+
+adminForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  adminPassword = new FormData(adminForm).get("password");
+  setMessage(adminMessage, "");
+
+  const response = await fetch("/api/admin", {
+    headers: { "X-Admin-Password": adminPassword }
+  });
+  const result = await response.json();
+
+  if (!response.ok) {
+    setMessage(adminMessage, result.error, "error");
+    return;
+  }
+
+  adminControls.classList.remove("hidden");
+  deadlineInput.value = result.settings.deadline;
+  responseCount.textContent = `${result.responseCount} response${result.responseCount === 1 ? "" : "s"} stored.`;
+  setMessage(adminMessage, "Admin controls unlocked.", "success");
+});
+
+saveDeadline.addEventListener("click", async () => {
+  setMessage(adminMessage, "Saving deadline...");
+  const response = await fetch("/api/admin/deadline", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Admin-Password": adminPassword
+    },
+    body: JSON.stringify({ deadline: deadlineInput.value })
+  });
+  const result = await response.json();
+
+  if (!response.ok) {
+    setMessage(adminMessage, result.error, "error");
+    return;
+  }
+
+  setMessage(adminMessage, "Deadline updated.", "success");
+  await loadStatus();
+});
+
+downloadWorkbook.addEventListener("click", () => {
+  fetch("/api/admin/responses.xlsx", {
+    headers: { "X-Admin-Password": adminPassword }
+  })
+    .then(response => {
+      if (!response.ok) throw new Error("Could not download the Excel file.");
+      return response.blob();
+    })
+    .then(blob => {
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "off-rota-responses.xlsx";
+      link.click();
+      URL.revokeObjectURL(link.href);
+    })
+    .catch(error => setMessage(adminMessage, error.message, "error"));
+});
+
+loadStatus();

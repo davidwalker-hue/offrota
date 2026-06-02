@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Off Rota Requests for June 2026</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="panel form-panel">
+        <div class="mast">
+          <p class="eyebrow">Hine Solicitors</p>
+          <h1>Off Rota Requests for June 2026</h1>
+          <p id="deadlineText" class="deadline">Checking deadline...</p>
+        </div>
+
+        <div id="closedNotice" class="notice hidden">
+          This request form is currently closed. Please contact the rota administrator if you need access.
+        </div>
+
+        <form id="requestForm" class="request-form">
+          <label>
+            Email address
+            <input name="email" type="email" autocomplete="email" required>
+          </label>
+
+          <label>
+            Staff Initials
+            <input name="staffInitials" type="text" autocomplete="name" required>
+          </label>
+
+          <div class="date-grid">
+            <label>
+              Dates to avoid from:
+              <input name="dateFrom" type="date" required>
+            </label>
+
+            <label>
+              Dates to avoid to:
+              <input name="dateTo" type="date" required>
+            </label>
+          </div>
+
+          <fieldset>
+            <legend>Are these Dates part of a continuous period of annual leave?</legend>
+            <label class="choice">
+              <input type="radio" name="continuousLeave" value="Yes" required>
+              Yes
+            </label>
+            <label class="choice">
+              <input type="radio" name="continuousLeave" value="No" required>
+              No
+            </label>
+          </fieldset>
+
+          <button type="submit">Submit request</button>
+          <p id="formMessage" class="message" role="status"></p>
+        </form>
+      </section>
+
+      <section class="panel admin-panel">
+        <h2>Admin</h2>
+        <form id="adminForm" class="admin-form">
+          <label>
+            Admin password
+            <input name="password" type="password" autocomplete="current-password" required>
+          </label>
+          <button type="submit">Unlock</button>
+        </form>
+
+        <div id="adminControls" class="admin-controls hidden">
+          <p id="responseCount" class="subtle"></p>
+          <label>
+            Deadline date and time
+            <input id="deadlineInput" type="datetime-local" required>
+          </label>
+          <div class="admin-actions">
+            <button id="saveDeadline" type="button">Save deadline</button>
+            <button id="downloadWorkbook" type="button" class="secondary">Download Excel</button>
+          </div>
+          <p id="adminMessage" class="message" role="status"></p>
+        </div>
+      </section>
+    </main>
+
+    <script src="/script.js"></script>
+  </body>
+</html>

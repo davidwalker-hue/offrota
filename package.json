@@ -1,0 +1,9 @@
+{
+  "name": "off-rota-request-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local website replacement for the Off Rota Requests Google Form.",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

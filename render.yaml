@@ -10,6 +10,24 @@ services:
         sync: false
       - key: DATA_DIR
         value: /opt/render/project/src/storage
+      - key: PUBLIC_URL
+        value: https://off-rota-request-site.onrender.com
+      - key: SSO_PROVIDER
+        sync: false
+      - key: SSO_ALLOWED_DOMAIN
+        sync: false
+      - key: SSO_SESSION_SECRET
+        generateValue: true
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: MICROSOFT_CLIENT_ID
+        sync: false
+      - key: MICROSOFT_CLIENT_SECRET
+        sync: false
+      - key: MICROSOFT_TENANT
+        sync: false
     disk:
       name: off-rota-responses
       mountPath: /opt/render/project/src/storage

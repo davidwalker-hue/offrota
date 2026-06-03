@@ -1,5 +1,6 @@
 const requestForm = document.querySelector("#requestForm");
 const formTitle = document.querySelector("#formTitle");
+const signedInText = document.querySelector("#signedInText");
 const formMessage = document.querySelector("#formMessage");
 const closedNotice = document.querySelector("#closedNotice");
 const deadlineText = document.querySelector("#deadlineText");
@@ -47,6 +48,11 @@ function renderWorkbookOptions(workbooks = []) {
 }
 
 async function loadStatus() {
+  const meResponse = await fetch("/api/me");
+  if (meResponse.ok) {
+    const me = await meResponse.json();
+    signedInText.textContent = me.ssoEnabled && me.email ? `Signed in as ${me.email}` : "";
+  }
   const response = await fetch("/api/status");
   const status = await response.json();
   formTitle.textContent = status.settings.title;

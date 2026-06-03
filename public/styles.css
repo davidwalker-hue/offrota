@@ -40,6 +40,18 @@ body::before {
   gap: 20px;
 }
 
+.login-shell {
+  width: min(520px, calc(100% - 32px));
+  min-height: calc(100vh - 8px);
+  margin: 0 auto;
+  display: grid;
+  place-items: center;
+}
+
+.login-panel {
+  width: 100%;
+}
+
 .panel {
   background: var(--paper);
   border: 1px solid var(--line);
@@ -78,9 +90,15 @@ h2 {
 }
 
 .deadline,
-.subtle {
+.subtle,
+.signed-in {
   color: var(--muted);
   line-height: 1.5;
+}
+
+.signed-in {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
 }
 
 .request-form,
@@ -160,6 +178,23 @@ button {
   font: inherit;
   font-weight: 700;
   cursor: pointer;
+}
+
+.login-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border-radius: 6px;
+  padding: 10px 18px;
+  color: #fff;
+  background: var(--accent);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.login-button:hover {
+  background: var(--accent-strong);
 }
 
 button:hover {

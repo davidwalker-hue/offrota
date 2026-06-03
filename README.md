@@ -49,6 +49,40 @@ Default admin password:
 
 The admin panel lets you update the deadline date and time and download the Excel workbook.
 
+## SSO
+
+SSO is disabled until these Render environment variables are set:
+
+```text
+PUBLIC_URL=https://off-rota-request-site.onrender.com
+SSO_PROVIDER=google
+SSO_ALLOWED_DOMAIN=hinesolicitors.com
+SSO_SESSION_SECRET=use-a-long-random-string
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+```
+
+For Microsoft instead:
+
+```text
+PUBLIC_URL=https://off-rota-request-site.onrender.com
+SSO_PROVIDER=microsoft
+SSO_ALLOWED_DOMAIN=hinesolicitors.com
+SSO_SESSION_SECRET=use-a-long-random-string
+MICROSOFT_CLIENT_ID=...
+MICROSOFT_CLIENT_SECRET=...
+MICROSOFT_TENANT=organizations
+```
+
+OAuth redirect URLs:
+
+```text
+Google: https://off-rota-request-site.onrender.com/auth/google/callback
+Microsoft: https://off-rota-request-site.onrender.com/auth/microsoft/callback
+```
+
+When enabled, only accounts whose email ends with the configured domain can access the site. The admin password still protects the admin controls after SSO sign-in.
+
 To use a different password, start the site from PowerShell like this:
 
 ```powershell

@@ -1,4 +1,5 @@
 const http = require("http");
+const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -6,6 +7,15 @@ const zlib = require("zlib");
 
 const PORT = Number(process.env.PORT || 4173);
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "ChangeMe2026!";
+const PUBLIC_URL = (process.env.PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/$/, "");
+const SSO_PROVIDER = (process.env.SSO_PROVIDER || "").toLowerCase();
+const SSO_ALLOWED_DOMAIN = (process.env.SSO_ALLOWED_DOMAIN || "").toLowerCase().replace(/^@/, "");
+const SSO_SESSION_SECRET = process.env.SSO_SESSION_SECRET || crypto.createHash("sha256").update(ADMIN_PASSWORD).digest("hex");
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
+const MICROSOFT_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID || "";
+const MICROSOFT_CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET || "";
+const MICROSOFT_TENANT = process.env.MICROSOFT_TENANT || "organizations";
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, "public");
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, "data");
@@ -82,6 +92,13 @@ const DEFAULT_SETTINGS = {
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
+function ssoEnabled() {
+  if (!SSO_PROVIDER || !SSO_ALLOWED_DOMAIN) return false;
+  if (SSO_PROVIDER === "google") return Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
+  if (SSO_PROVIDER === "microsoft") return Boolean(MICROSOFT_CLIENT_ID && MICROSOFT_CLIENT_SECRET);
+  return false;
+}
+
 function logLine(message) {
   fs.appendFileSync(SERVER_LOG, `${new Date().toISOString()} ${message}\n`);
 }
@@ -145,6 +162,14 @@ function send(res, status, body, type = "application/json") {
   res.end(payload);
 }
 
+function redirect(res, location) {
+  res.writeHead(302, {
+    Location: location,
+    "Cache-Control": "no-store"
+  });
+  res.end();
+}
+
 function parseBody(req) {
   return new Promise((resolve, reject) => {
     let body = "";
@@ -160,6 +185,189 @@ function parseBody(req) {
       }
     });
   });
+}
+
+function parseCookies(req) {
+  const header = req.headers.cookie || "";
+  const cookies = {};
+  for (const part of header.split(";")) {
+    const index = part.indexOf("=");
+    if (index < 0) continue;
+    cookies[part.slice(0, index).trim()] = decodeURIComponent(part.slice(index + 1).trim());
+  }
+  return cookies;
+}
+
+function base64Url(input) {
+  return Buffer.from(input).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function sign(value) {
+  return crypto.createHmac("sha256", SSO_SESSION_SECRET).update(value).digest("base64url");
+}
+
+function createSession(email) {
+  const payload = base64Url(JSON.stringify({
+    email,
+    exp: Date.now() + 12 * 60 * 60 * 1000
+  }));
+  return `${payload}.${sign(payload)}`;
+}
+
+function getSession(req) {
+  if (!ssoEnabled()) return { email: "local" };
+  const token = parseCookies(req).offrota_session;
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length !== 2 || sign(parts[0]) !== parts[1]) return null;
+  try {
+    const json = Buffer.from(parts[0].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+    const session = JSON.parse(json);
+    if (!session.email || session.exp < Date.now()) return null;
+    if (!emailAllowed(session.email)) return null;
+    return session;
+  } catch {
+    return null;
+  }
+}
+
+function emailAllowed(email) {
+  const value = String(email || "").toLowerCase();
+  return Boolean(SSO_ALLOWED_DOMAIN && value.endsWith(`@${SSO_ALLOWED_DOMAIN}`));
+}
+
+function nonce() {
+  return crypto.randomBytes(18).toString("base64url");
+}
+
+function providerConfig(provider) {
+  if (provider === "google") {
+    return {
+      clientId: GOOGLE_CLIENT_ID,
+      clientSecret: GOOGLE_CLIENT_SECRET,
+      authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+      tokenUrl: "https://oauth2.googleapis.com/token",
+      userInfoUrl: "https://openidconnect.googleapis.com/v1/userinfo",
+      callbackPath: "/auth/google/callback",
+      scope: "openid email profile"
+    };
+  }
+  if (provider === "microsoft") {
+    return {
+      clientId: MICROSOFT_CLIENT_ID,
+      clientSecret: MICROSOFT_CLIENT_SECRET,
+      authorizeUrl: `https://login.microsoftonline.com/${MICROSOFT_TENANT}/oauth2/v2.0/authorize`,
+      tokenUrl: `https://login.microsoftonline.com/${MICROSOFT_TENANT}/oauth2/v2.0/token`,
+      userInfoUrl: "https://graph.microsoft.com/oidc/userinfo",
+      callbackPath: "/auth/microsoft/callback",
+      scope: "openid email profile"
+    };
+  }
+  return null;
+}
+
+function httpsRequest(method, targetUrl, body, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(targetUrl);
+    const payload = body ? Buffer.from(body) : null;
+    const req = https.request({
+      method,
+      hostname: url.hostname,
+      path: `${url.pathname}${url.search}`,
+      headers: {
+        ...headers,
+        ...(payload ? { "Content-Length": payload.length } : {})
+      }
+    }, response => {
+      let data = "";
+      response.on("data", chunk => { data += chunk; });
+      response.on("end", () => {
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          reject(new Error(`SSO request failed with status ${response.statusCode}: ${data.slice(0, 200)}`));
+          return;
+        }
+        try {
+          resolve(JSON.parse(data));
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+    req.on("error", reject);
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+
+function authStateCookie(res, state) {
+  res.setHeader("Set-Cookie", `offrota_state=${encodeURIComponent(state)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=600${PUBLIC_URL.startsWith("https://") ? "; Secure" : ""}`);
+}
+
+async function handleAuth(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  if (url.pathname === "/login") {
+    if (!ssoEnabled()) return redirect(res, "/");
+    return redirect(res, `/auth/${SSO_PROVIDER}`);
+  }
+
+  if (url.pathname === "/logout") {
+    res.setHeader("Set-Cookie", `offrota_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${PUBLIC_URL.startsWith("https://") ? "; Secure" : ""}`);
+    return redirect(res, "/login");
+  }
+
+  const provider = url.pathname === "/auth/google" ? "google" : url.pathname === "/auth/microsoft" ? "microsoft" : null;
+  if (provider) {
+    if (!ssoEnabled() || provider !== SSO_PROVIDER) return send(res, 404, "Not found", "text/plain");
+    const config = providerConfig(provider);
+    const state = nonce();
+    authStateCookie(res, state);
+    const authUrl = new URL(config.authorizeUrl);
+    authUrl.searchParams.set("client_id", config.clientId);
+    authUrl.searchParams.set("redirect_uri", `${PUBLIC_URL}${config.callbackPath}`);
+    authUrl.searchParams.set("response_type", "code");
+    authUrl.searchParams.set("scope", config.scope);
+    authUrl.searchParams.set("state", state);
+    authUrl.searchParams.set("prompt", "select_account");
+    return redirect(res, authUrl.toString());
+  }
+
+  const callbackProvider = url.pathname === "/auth/google/callback" ? "google" : url.pathname === "/auth/microsoft/callback" ? "microsoft" : null;
+  if (callbackProvider) {
+    if (!ssoEnabled() || callbackProvider !== SSO_PROVIDER) return send(res, 404, "Not found", "text/plain");
+    const cookies = parseCookies(req);
+    if (!cookies.offrota_state || cookies.offrota_state !== url.searchParams.get("state")) {
+      return send(res, 400, "SSO state did not match. Please try again.", "text/plain");
+    }
+    const code = url.searchParams.get("code");
+    if (!code) return send(res, 400, "Missing SSO code.", "text/plain");
+    const config = providerConfig(callbackProvider);
+    const tokenBody = new URLSearchParams({
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      code,
+      grant_type: "authorization_code",
+      redirect_uri: `${PUBLIC_URL}${config.callbackPath}`
+    }).toString();
+    const token = await httpsRequest("POST", config.tokenUrl, tokenBody, {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json"
+    });
+    const userInfo = await httpsRequest("GET", config.userInfoUrl, null, {
+      Authorization: `Bearer ${token.access_token}`,
+      Accept: "application/json"
+    });
+    const email = String(userInfo.email || userInfo.preferred_username || "").toLowerCase();
+    if (!emailAllowed(email)) {
+      return send(res, 403, `Access is limited to @${SSO_ALLOWED_DOMAIN} accounts.`, "text/plain");
+    }
+    res.setHeader("Set-Cookie", [
+      `offrota_session=${encodeURIComponent(createSession(email))}; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200${PUBLIC_URL.startsWith("https://") ? "; Secure" : ""}`,
+      `offrota_state=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${PUBLIC_URL.startsWith("https://") ? "; Secure" : ""}`
+    ]);
+    return redirect(res, "/");
+  }
+
+  return false;
 }
 
 function isValidEmail(value) {
@@ -451,6 +659,15 @@ async function handleApi(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const settings = getSettings();
 
+  if (req.method === "GET" && url.pathname === "/api/me") {
+    const session = getSession(req);
+    return send(res, 200, {
+      ssoEnabled: ssoEnabled(),
+      email: session ? session.email : null,
+      allowedDomain: SSO_ALLOWED_DOMAIN || null
+    });
+  }
+
   if (req.method === "GET" && url.pathname === "/api/status") {
     return send(res, 200, {
       settings,
@@ -603,6 +820,14 @@ ensureWorkbook(getSettings());
 
 const server = http.createServer(async (req, res) => {
   try {
+    const authHandled = await handleAuth(req, res);
+    if (authHandled !== false) return;
+
+    if (ssoEnabled() && !getSession(req)) {
+      if (req.url.startsWith("/api/")) return send(res, 401, { error: "Sign in required." });
+      return redirect(res, "/login");
+    }
+
     if (req.url.startsWith("/api/")) {
       const handled = await handleApi(req, res);
       if (handled === false) send(res, 404, { error: "Not found" });

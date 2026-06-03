@@ -181,6 +181,14 @@ button:disabled {
   background: #41414a;
 }
 
+.danger {
+  background: var(--danger);
+}
+
+.danger:hover {
+  background: #842f26;
+}
+
 .notice {
   margin-bottom: 18px;
   border-left: 4px solid var(--danger);
@@ -207,7 +215,7 @@ button:disabled {
 
 .admin-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 

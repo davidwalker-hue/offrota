@@ -14,6 +14,7 @@ const workbookSelect = document.querySelector("#workbookSelect");
 const saveDeadline = document.querySelector("#saveDeadline");
 const saveTitle = document.querySelector("#saveTitle");
 const downloadWorkbook = document.querySelector("#downloadWorkbook");
+const resetWorkbooks = document.querySelector("#resetWorkbooks");
 
 let adminPassword = "";
 
@@ -172,6 +173,27 @@ downloadWorkbook.addEventListener("click", () => {
       URL.revokeObjectURL(link.href);
     })
     .catch(error => setMessage(adminMessage, error.message, "error"));
+});
+
+resetWorkbooks.addEventListener("click", async () => {
+  const confirmed = window.confirm("Are you sure you want to do this? This will permanently remove all saved response sheets and start again with a fresh empty workbook for the current month and year.");
+  if (!confirmed) return;
+
+  setMessage(adminMessage, "Resetting sheets...");
+  const response = await fetch("/api/admin/workbooks/reset", {
+    method: "POST",
+    headers: { "X-Admin-Password": adminPassword }
+  });
+  const result = await response.json();
+
+  if (!response.ok) {
+    setMessage(adminMessage, result.error, "error");
+    return;
+  }
+
+  renderWorkbookOptions(result.workbooks);
+  responseCount.textContent = "0 responses stored.";
+  setMessage(adminMessage, "All sheets and responses have been reset.", "success");
 });
 
 loadStatus();

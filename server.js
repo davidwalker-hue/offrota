@@ -408,6 +408,27 @@ function workbookOptions(settings) {
   });
 }
 
+function resetAllWorkbooks(settings) {
+  const removed = [];
+  const patterns = [
+    /^responses-\d{4}-\d{2}\.json$/,
+    /^off-rota-responses-[A-Za-z]+-\d{4}\.xlsx$/,
+    /^responses\.json$/,
+    /^off-rota-responses\.xlsx$/
+  ];
+
+  for (const file of fs.readdirSync(DATA_DIR)) {
+    if (!patterns.some(pattern => pattern.test(file))) continue;
+    const target = path.join(DATA_DIR, file);
+    fs.unlinkSync(target);
+    removed.push(file);
+  }
+
+  writeResponses(settings, []);
+  buildWorkbook(settings, []);
+  return removed;
+}
+
 function validateSubmission(body) {
   const email = String(body.email || "").trim();
   const staffInitials = String(body.staffInitials || "").trim();
@@ -546,6 +567,17 @@ async function handleApi(req, res) {
       clearedPeriod: selectedPeriod,
       settings,
       responseCount: getResponses(settings).length,
+      workbooks: workbookOptions(settings)
+    });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/admin/workbooks/reset") {
+    if (!requireAdmin(req)) return send(res, 401, { error: "Incorrect admin password." });
+    const removed = resetAllWorkbooks(settings);
+    return send(res, 200, {
+      removed,
+      settings,
+      responseCount: 0,
       workbooks: workbookOptions(settings)
     });
   }

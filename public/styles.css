@@ -90,15 +90,41 @@ h2 {
 }
 
 .deadline,
-.subtle,
-.signed-in {
+.subtle {
   color: var(--muted);
   line-height: 1.5;
 }
 
+.signed-in-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 10px;
+}
+
 .signed-in {
-  margin: 0 0 8px;
+  margin: 0;
+  color: var(--muted);
   font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.sign-out {
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 11px;
+  color: var(--slate);
+  background: #fff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.sign-out:hover {
+  color: #fff;
+  background: var(--slate);
 }
 
 .request-form,
@@ -172,12 +198,14 @@ button {
   min-height: 44px;
   border: 0;
   border-radius: 6px;
-  padding: 10px 16px;
+  padding: 10px 14px;
   color: #fff;
   background: var(--accent);
   font: inherit;
   font-weight: 700;
   cursor: pointer;
+  line-height: 1.25;
+  white-space: normal;
 }
 
 .login-button {
@@ -250,7 +278,7 @@ button:disabled {
 
 .admin-actions {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 

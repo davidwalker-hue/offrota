@@ -1,5 +1,6 @@
 const requestForm = document.querySelector("#requestForm");
 const formTitle = document.querySelector("#formTitle");
+const signedInBar = document.querySelector("#signedInBar");
 const signedInText = document.querySelector("#signedInText");
 const emailInput = requestForm.elements.email;
 const formMessage = document.querySelector("#formMessage");
@@ -54,6 +55,7 @@ async function loadStatus() {
   if (meResponse.ok) {
     const me = await meResponse.json();
     signedInText.textContent = me.ssoEnabled && me.email ? `Signed in as ${me.email}` : "";
+    signedInBar.classList.toggle("hidden", !(me.ssoEnabled && me.email));
     if (me.ssoEnabled && me.email) {
       emailInput.value = me.email;
       emailInput.readOnly = true;

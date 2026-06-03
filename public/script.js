@@ -10,6 +10,7 @@ const responseCount = document.querySelector("#responseCount");
 const deadlineInput = document.querySelector("#deadlineInput");
 const requestMonth = document.querySelector("#requestMonth");
 const requestYear = document.querySelector("#requestYear");
+const workbookSelect = document.querySelector("#workbookSelect");
 const saveDeadline = document.querySelector("#saveDeadline");
 const saveTitle = document.querySelector("#saveTitle");
 const downloadWorkbook = document.querySelector("#downloadWorkbook");
@@ -31,6 +32,17 @@ function formatDeadline(value) {
 function setMessage(element, text, type = "") {
   element.textContent = text;
   element.className = `message ${type}`.trim();
+}
+
+function renderWorkbookOptions(workbooks = []) {
+  workbookSelect.innerHTML = "";
+  for (const workbook of workbooks) {
+    const option = document.createElement("option");
+    option.value = workbook.period;
+    option.textContent = workbook.isCurrent ? `${workbook.label} (current)` : workbook.label;
+    option.selected = workbook.isCurrent;
+    workbookSelect.append(option);
+  }
 }
 
 async function loadStatus() {
@@ -89,6 +101,7 @@ adminForm.addEventListener("submit", async event => {
   deadlineInput.value = result.settings.deadline;
   requestMonth.value = String(result.settings.requestMonth);
   requestYear.value = String(result.settings.requestYear);
+  renderWorkbookOptions(result.workbooks);
   responseCount.textContent = `${result.responseCount} response${result.responseCount === 1 ? "" : "s"} stored.`;
   setMessage(adminMessage, "Admin controls unlocked.", "success");
 });
@@ -136,12 +149,15 @@ saveTitle.addEventListener("click", async () => {
 
   requestMonth.value = String(result.settings.requestMonth);
   requestYear.value = String(result.settings.requestYear);
+  renderWorkbookOptions(result.workbooks);
+  responseCount.textContent = `${result.responseCount} response${result.responseCount === 1 ? "" : "s"} stored.`;
   setMessage(adminMessage, "Title updated.", "success");
   await loadStatus();
 });
 
 downloadWorkbook.addEventListener("click", () => {
-  fetch("/api/admin/responses.xlsx", {
+  const period = encodeURIComponent(workbookSelect.value);
+  fetch(`/api/admin/responses.xlsx?period=${period}`, {
     headers: { "X-Admin-Password": adminPassword }
   })
     .then(response => {

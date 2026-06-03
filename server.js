@@ -9,9 +9,9 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "ChangeMe2026!";
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, "public");
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, "data");
-const RESPONSES_JSON = path.join(DATA_DIR, "responses.json");
+const LEGACY_RESPONSES_JSON = path.join(DATA_DIR, "responses.json");
 const SETTINGS_JSON = path.join(DATA_DIR, "settings.json");
-const WORKBOOK = path.join(DATA_DIR, "off-rota-responses.xlsx");
+const LEGACY_WORKBOOK = path.join(DATA_DIR, "off-rota-responses.xlsx");
 const SERVER_LOG = path.join(DATA_DIR, "server.log");
 
 const HEADERS = [
@@ -40,6 +40,35 @@ const MONTHS = [
 
 function buildTitle(month, year) {
   return `Off Rota Requests for ${MONTHS[month - 1]} ${year}`;
+}
+
+function periodKey(settings) {
+  return `${settings.requestYear}-${String(settings.requestMonth).padStart(2, "0")}`;
+}
+
+function periodLabel(settings) {
+  return `${MONTHS[settings.requestMonth - 1]} ${settings.requestYear}`;
+}
+
+function settingsFromPeriodKey(key) {
+  const match = /^(\d{4})-(\d{2})$/.exec(key);
+  if (!match) return null;
+  const requestYear = Number(match[1]);
+  const requestMonth = Number(match[2]);
+  if (requestMonth < 1 || requestMonth > 12 || requestYear < 2000 || requestYear > 2100) return null;
+  return { requestMonth, requestYear };
+}
+
+function workbookFileName(settings) {
+  return `off-rota-responses-${periodLabel(settings).replace(/\s+/g, "-")}.xlsx`;
+}
+
+function responsesPath(settings) {
+  return path.join(DATA_DIR, `responses-${periodKey(settings)}.json`);
+}
+
+function workbookPath(settings) {
+  return path.join(DATA_DIR, workbookFileName(settings));
 }
 
 const DEFAULT_SETTINGS = {
@@ -92,10 +121,23 @@ function getSettings() {
   return settings;
 }
 
-function getResponses() {
-  const responses = readJson(RESPONSES_JSON, []);
-  writeJson(RESPONSES_JSON, responses);
+function migrateLegacyResponses(settings) {
+  const target = responsesPath(settings);
+  if (!fs.existsSync(target) && fs.existsSync(LEGACY_RESPONSES_JSON)) {
+    writeJson(target, readJson(LEGACY_RESPONSES_JSON, []));
+  }
+}
+
+function getResponses(settings) {
+  migrateLegacyResponses(settings);
+  const file = responsesPath(settings);
+  const responses = readJson(file, []);
+  writeJson(file, responses);
   return responses;
+}
+
+function writeResponses(settings, responses) {
+  writeJson(responsesPath(settings), responses);
 }
 
 function deadlineHasPassed(settings) {
@@ -255,7 +297,7 @@ function createZip(files) {
   return Buffer.concat([...localParts, central, end]);
 }
 
-function buildWorkbook(responses) {
+function buildWorkbook(settings, responses) {
   const rows = [
     HEADERS,
     ...responses.map(response => [
@@ -291,7 +333,7 @@ function buildWorkbook(responses) {
       name: "xl/workbook.xml",
       content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <sheets><sheet name="Form Responses 1" sheetId="1" r:id="rId1"/></sheets>
+  <sheets><sheet name="${escapeXml(periodLabel(settings))}" sheetId="1" r:id="rId1"/></sheets>
 </workbook>`
     },
     {
@@ -316,12 +358,62 @@ function buildWorkbook(responses) {
     { name: "xl/worksheets/sheet1.xml", content: sheetXml(rows) }
   ];
 
-  fs.writeFileSync(WORKBOOK, createZip(files));
+  fs.writeFileSync(workbookPath(settings), createZip(files));
 }
 
-function ensureWorkbook() {
-  const responses = getResponses();
-  if (!fs.existsSync(WORKBOOK)) buildWorkbook(responses);
+function ensureWorkbook(settings) {
+  const responses = getResponses(settings);
+  const file = workbookPath(settings);
+  if (!fs.existsSync(file)) buildWorkbook(settings, responses);
+  return file;
+}
+
+function workbookOptions(settings) {
+  ensureWorkbook(settings);
+  const currentKey = periodKey(settings);
+  const options = new Map();
+
+  for (const file of fs.readdirSync(DATA_DIR)) {
+    const jsonMatch = /^responses-(\d{4}-\d{2})\.json$/.exec(file);
+    if (jsonMatch) {
+      const parsed = settingsFromPeriodKey(jsonMatch[1]);
+      if (parsed) {
+        const optionSettings = { ...settings, ...parsed };
+        ensureWorkbook(optionSettings);
+      }
+    }
+  }
+
+  for (const file of fs.readdirSync(DATA_DIR)) {
+    const match = /^off-rota-responses-([A-Za-z]+)-(\d{4})\.xlsx$/.exec(file);
+    if (!match) continue;
+    const requestMonth = MONTHS.indexOf(match[1]) + 1;
+    const requestYear = Number(match[2]);
+    if (!requestMonth || !requestYear) continue;
+    const optionSettings = { ...settings, requestMonth, requestYear };
+    const key = periodKey(optionSettings);
+    options.set(key, {
+      period: key,
+      label: periodLabel(optionSettings),
+      fileName: file,
+      isCurrent: key === currentKey
+    });
+  }
+
+  if (fs.existsSync(LEGACY_WORKBOOK)) {
+    options.set("legacy", {
+      period: "legacy",
+      label: "Legacy responses",
+      fileName: path.basename(LEGACY_WORKBOOK),
+      isCurrent: false
+    });
+  }
+
+  return [...options.values()].sort((a, b) => {
+    if (a.isCurrent) return -1;
+    if (b.isCurrent) return 1;
+    return b.period.localeCompare(a.period);
+  });
 }
 
 function validateSubmission(body) {
@@ -350,7 +442,7 @@ async function handleApi(req, res) {
     return send(res, 200, {
       settings,
       isClosed: deadlineHasPassed(settings),
-      responseCount: getResponses().length
+      responseCount: getResponses(settings).length
     });
   }
 
@@ -363,13 +455,13 @@ async function handleApi(req, res) {
     const { errors, value } = validateSubmission(body);
     if (errors.length) return send(res, 400, { errors });
 
-    const responses = getResponses();
+    const responses = getResponses(settings);
     responses.push({
       timestamp: new Date().toISOString(),
       ...value
     });
-    writeJson(RESPONSES_JSON, responses);
-    buildWorkbook(responses);
+    writeResponses(settings, responses);
+    buildWorkbook(settings, responses);
     return send(res, 201, { ok: true, responseCount: responses.length });
   }
 
@@ -377,8 +469,9 @@ async function handleApi(req, res) {
     if (!requireAdmin(req)) return send(res, 401, { error: "Incorrect admin password." });
     return send(res, 200, {
       settings,
-      responseCount: getResponses().length,
-      workbookPath: WORKBOOK
+      responseCount: getResponses(settings).length,
+      workbookPath: workbookPath(settings),
+      workbooks: workbookOptions(settings)
     });
   }
 
@@ -412,18 +505,40 @@ async function handleApi(req, res) {
       title: buildTitle(requestMonth, requestYear)
     };
     writeJson(SETTINGS_JSON, next);
-    return send(res, 200, { settings: next, isClosed: deadlineHasPassed(next) });
+    ensureWorkbook(next);
+    return send(res, 200, {
+      settings: next,
+      isClosed: deadlineHasPassed(next),
+      responseCount: getResponses(next).length,
+      workbooks: workbookOptions(next)
+    });
   }
 
   if (req.method === "GET" && url.pathname === "/api/admin/responses.xlsx") {
     if (!requireAdmin(req)) return send(res, 401, { error: "Incorrect admin password." });
-    ensureWorkbook();
+    const selectedPeriod = url.searchParams.get("period") || periodKey(settings);
+    let selectedSettings = settings;
+    let selectedWorkbook = null;
+    let selectedFileName = null;
+
+    if (selectedPeriod === "legacy") {
+      selectedWorkbook = LEGACY_WORKBOOK;
+      selectedFileName = "off-rota-responses-legacy.xlsx";
+      if (!fs.existsSync(selectedWorkbook)) return send(res, 404, { error: "That workbook is not available." });
+    } else {
+      const parsed = settingsFromPeriodKey(selectedPeriod);
+      if (!parsed) return send(res, 400, { error: "Choose a valid workbook." });
+      selectedSettings = { ...settings, ...parsed };
+      selectedWorkbook = ensureWorkbook(selectedSettings);
+      selectedFileName = workbookFileName(selectedSettings);
+    }
+
     res.writeHead(200, {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": 'attachment; filename="off-rota-responses.xlsx"',
+      "Content-Disposition": `attachment; filename="${selectedFileName}"`,
       "Cache-Control": "no-store"
     });
-    return fs.createReadStream(WORKBOOK).pipe(res);
+    return fs.createReadStream(selectedWorkbook).pipe(res);
   }
 
   return false;
@@ -443,7 +558,7 @@ function serveStatic(req, res) {
   });
 }
 
-ensureWorkbook();
+ensureWorkbook(getSettings());
 
 const server = http.createServer(async (req, res) => {
   try {

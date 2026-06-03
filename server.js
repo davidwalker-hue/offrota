@@ -121,15 +121,7 @@ function getSettings() {
   return settings;
 }
 
-function migrateLegacyResponses(settings) {
-  const target = responsesPath(settings);
-  if (!fs.existsSync(target) && fs.existsSync(LEGACY_RESPONSES_JSON)) {
-    writeJson(target, readJson(LEGACY_RESPONSES_JSON, []));
-  }
-}
-
 function getResponses(settings) {
-  migrateLegacyResponses(settings);
   const file = responsesPath(settings);
   const responses = readJson(file, []);
   writeJson(file, responses);
@@ -361,10 +353,10 @@ function buildWorkbook(settings, responses) {
   fs.writeFileSync(workbookPath(settings), createZip(files));
 }
 
-function ensureWorkbook(settings) {
+function ensureWorkbook(settings, force = false) {
   const responses = getResponses(settings);
   const file = workbookPath(settings);
-  if (!fs.existsSync(file)) buildWorkbook(settings, responses);
+  if (force || !fs.existsSync(file)) buildWorkbook(settings, responses);
   return file;
 }
 
@@ -539,6 +531,23 @@ async function handleApi(req, res) {
       "Cache-Control": "no-store"
     });
     return fs.createReadStream(selectedWorkbook).pipe(res);
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/admin/workbook/clear") {
+    if (!requireAdmin(req)) return send(res, 401, { error: "Incorrect admin password." });
+    const body = await parseBody(req);
+    const selectedPeriod = String(body.period || "").trim();
+    const parsed = settingsFromPeriodKey(selectedPeriod);
+    if (!parsed) return send(res, 400, { error: "Choose a valid workbook to clear." });
+    const selectedSettings = { ...settings, ...parsed };
+    writeResponses(selectedSettings, []);
+    buildWorkbook(selectedSettings, []);
+    return send(res, 200, {
+      clearedPeriod: selectedPeriod,
+      settings,
+      responseCount: getResponses(settings).length,
+      workbooks: workbookOptions(settings)
+    });
   }
 
   return false;

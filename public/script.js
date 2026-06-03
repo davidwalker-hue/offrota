@@ -1,6 +1,7 @@
 const requestForm = document.querySelector("#requestForm");
 const formTitle = document.querySelector("#formTitle");
 const signedInText = document.querySelector("#signedInText");
+const emailInput = requestForm.elements.email;
 const formMessage = document.querySelector("#formMessage");
 const closedNotice = document.querySelector("#closedNotice");
 const deadlineText = document.querySelector("#deadlineText");
@@ -52,6 +53,10 @@ async function loadStatus() {
   if (meResponse.ok) {
     const me = await meResponse.json();
     signedInText.textContent = me.ssoEnabled && me.email ? `Signed in as ${me.email}` : "";
+    if (me.ssoEnabled && me.email) {
+      emailInput.value = me.email;
+      emailInput.readOnly = true;
+    }
   }
   const response = await fetch("/api/status");
   const status = await response.json();

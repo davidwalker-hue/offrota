@@ -206,9 +206,10 @@ function sign(value) {
   return crypto.createHmac("sha256", SSO_SESSION_SECRET).update(value).digest("base64url");
 }
 
-function createSession(email) {
+function createSession(email, accessToken) {
   const payload = base64Url(JSON.stringify({
     email,
+    accessToken,
     exp: Date.now() + 12 * 60 * 60 * 1000
   }));
   return `${payload}.${sign(payload)}`;
@@ -249,7 +250,7 @@ function providerConfig(provider) {
       tokenUrl: "https://oauth2.googleapis.com/token",
       userInfoUrl: "https://openidconnect.googleapis.com/v1/userinfo",
       callbackPath: "/auth/google/callback",
-      scope: "openid email profile"
+      scope: "openid email profile https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file"
     };
   }
   if (provider === "microsoft") {
@@ -361,7 +362,7 @@ async function handleAuth(req, res) {
       return send(res, 403, `Access is limited to @${SSO_ALLOWED_DOMAIN} accounts.`, "text/plain");
     }
     res.setHeader("Set-Cookie", [
-      `offrota_session=${encodeURIComponent(createSession(email))}; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200${PUBLIC_URL.startsWith("https://") ? "; Secure" : ""}`,
+      `offrota_session=${encodeURIComponent(createSession(email, token.access_token))}; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200${PUBLIC_URL.startsWith("https://") ? "; Secure" : ""}`,
       `offrota_state=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${PUBLIC_URL.startsWith("https://") ? "; Secure" : ""}`
     ]);
     return redirect(res, "/");
@@ -559,6 +560,57 @@ function buildWorkbook(settings, responses) {
   ];
 
   fs.writeFileSync(workbookPath(settings), createZip(files));
+}
+
+function rowsForGoogleSheet(settings) {
+  return [
+    HEADERS,
+    ...getResponses(settings).map(response => [
+      response.timestamp,
+      response.email,
+      response.staffInitials,
+      response.dateFrom,
+      response.dateTo,
+      response.continuousLeave
+    ])
+  ];
+}
+
+async function createGoogleSheet(settings, accessToken) {
+  if (SSO_PROVIDER !== "google" || !accessToken) {
+    throw new Error("Sign in with Google before sending to Google Sheets.");
+  }
+
+  const label = periodLabel(settings);
+  const title = `Off Rota Requests - ${label}`;
+  const createBody = JSON.stringify({
+    properties: { title },
+    sheets: [{ properties: { title: "Form Responses 1" } }]
+  });
+  const spreadsheet = await httpsRequest("POST", "https://sheets.googleapis.com/v4/spreadsheets", createBody, {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+    Accept: "application/json"
+  });
+
+  const rows = rowsForGoogleSheet(settings);
+  const range = encodeURIComponent(`Form Responses 1!A1:${columnName(HEADERS.length - 1)}${rows.length}`);
+  await httpsRequest(
+    "PUT",
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheet.spreadsheetId}/values/${range}?valueInputOption=RAW`,
+    JSON.stringify({ values: rows }),
+    {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      Accept: "application/json"
+    }
+  );
+
+  return {
+    spreadsheetId: spreadsheet.spreadsheetId,
+    spreadsheetUrl: spreadsheet.spreadsheetUrl,
+    title
+  };
 }
 
 function ensureWorkbook(settings, force = false) {
@@ -769,6 +821,24 @@ async function handleApi(req, res) {
       "Cache-Control": "no-store"
     });
     return fs.createReadStream(selectedWorkbook).pipe(res);
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/admin/google-sheet") {
+    if (!requireAdmin(req)) return send(res, 401, { error: "Incorrect admin password." });
+    const session = getSession(req);
+    if (!session || !session.accessToken) return send(res, 401, { error: "Sign out and sign back in with Google, then try again." });
+    const body = await parseBody(req);
+    const selectedPeriod = String(body.period || periodKey(settings)).trim();
+    if (selectedPeriod === "legacy") return send(res, 400, { error: "Legacy workbooks can only be downloaded as Excel." });
+    const parsed = settingsFromPeriodKey(selectedPeriod);
+    if (!parsed) return send(res, 400, { error: "Choose a valid workbook." });
+    const selectedSettings = { ...settings, ...parsed };
+    try {
+      const result = await createGoogleSheet(selectedSettings, session.accessToken);
+      return send(res, 200, result);
+    } catch (error) {
+      return send(res, 502, { error: `${error.message} If this is the first time using Google Sheets export, sign out and back in to approve the new Google permission.` });
+    }
   }
 
   if (req.method === "POST" && url.pathname === "/api/admin/workbook/clear") {

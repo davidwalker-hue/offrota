@@ -16,6 +16,7 @@ const workbookSelect = document.querySelector("#workbookSelect");
 const saveDeadline = document.querySelector("#saveDeadline");
 const saveTitle = document.querySelector("#saveTitle");
 const downloadWorkbook = document.querySelector("#downloadWorkbook");
+const sendGoogleSheet = document.querySelector("#sendGoogleSheet");
 const resetWorkbooks = document.querySelector("#resetWorkbooks");
 
 let adminPassword = "";
@@ -184,6 +185,28 @@ downloadWorkbook.addEventListener("click", () => {
       URL.revokeObjectURL(link.href);
     })
     .catch(error => setMessage(adminMessage, error.message, "error"));
+});
+
+sendGoogleSheet.addEventListener("click", async () => {
+  const period = workbookSelect.value;
+  setMessage(adminMessage, "Creating Google Sheet...");
+  const response = await fetch("/api/admin/google-sheet", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Admin-Password": adminPassword
+    },
+    body: JSON.stringify({ period })
+  });
+  const result = await response.json();
+
+  if (!response.ok) {
+    setMessage(adminMessage, result.error, "error");
+    return;
+  }
+
+  setMessage(adminMessage, "Google Sheet created.", "success");
+  window.open(result.spreadsheetUrl, "_blank", "noopener");
 });
 
 resetWorkbooks.addEventListener("click", async () => {

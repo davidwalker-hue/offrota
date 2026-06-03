@@ -83,6 +83,8 @@ Microsoft: https://off-rota-request-site.onrender.com/auth/microsoft/callback
 
 When enabled, only accounts whose email ends with the configured domain can access the site. The admin password still protects the admin controls after SSO sign-in.
 
+The Google provider also requests permission to create Google Sheets/files for the signed-in user. This powers the admin **Send to Google Sheets** button. Existing sessions must sign out and sign back in after this feature is deployed so Google can approve the additional scope.
+
 To use a different password, start the site from PowerShell like this:
 
 ```powershell
